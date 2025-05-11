@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>MaxCripto</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #1f1f1f;
+      padding: 20px;
+      text-align: center;
+    }
+    .container {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #1f1f1f;
+      border-radius: 10px;
+    }
+    .search-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+    }
+    input {
+      flex: 1;
+    }
+    button {
+      background-color: #00b894;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    #price {
+      font-size: 18px;
+      margin-top: 10px;
+    }
+    #error {
+      color: red;
+      margin-top: 10px;
+    }
+    canvas {
+      margin-top: 20px;
+      background: white;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>MaxCripto</h1>
+  </header>
+
+  <div class="container">
+    <div class="search-bar">
+      <input id="search" type="text" placeholder="Digite a criptomoeda (ex: BTC, solana)">
+      <button onclick="searchCrypto()">Buscar</button>
+    </div>
+
+    <div id="price"></div>
+    <div id="error"></div>
+    <canvas id="chart" width="600" height="300"></canvas>
+  </div>
+
+  <script>
+    let chart;
+    let allCoins = [];
+
+    async function fetchAllCoins() {
+      if (allCoins.length === 0) {
+        const res = await fetch("https://api.coingecko.com/api/v3/coins/list");
+        allCoins = await res.json();
+      }
+    }
+
+    function matchCoin(input) {
+      input = input.toLowerCase();
+      return allCoins.find(c =>
+        c.id === input ||
+        c.symbol === input ||
+        c.name.toLowerCase() === input
+      ) || allCoins.find(c =>
+        c.id.includes(input) ||
+        c.symbol.includes(input) ||
+        c.name.toLowerCase().includes(input)
+      );
+    }
+
+    async function searchCrypto() {
+      const input = document.getElementById("search").value.trim().toLowerCase();
+      if (!input) return;
+
+      document.getElementById("error").textContent = "";
+      document.getElementById("price").textContent = "";
+
+      await fetchAllCoins();
+      const coin = matchCoin(input);
+
+      if (!coin) {
+        document.getElementById("error").textContent = "Criptomoeda não encontrada.";
+        return;
+      }
+
+      loadCrypto(coin.id, coin.name);
+    }
+
+    async function loadCrypto(coinId, coinName) {
+      try {
+        const [priceRes, chartRes] = await Promise.all([
+          fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=brl`),
+          fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=brl&days=30`)
+        ]);
+
+        if (!priceRes.ok || !chartRes.ok) throw new Error();
+
+        const priceData = await priceRes.json();
+        const chartData = await chartRes.json();
+
+        const price = priceData[coinId].brl;
+        document.getElementById("price").textContent = `Preço atual: R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        document.getElementById("error").textContent = "";
+
+        const labels = chartData.prices.map(p => new Date(p[0]).toLocaleDateString('pt-BR'));
+        const prices = chartData.prices.map(p => p[1]);
+
+        if (chart) chart.destroy();
+
+        const ctx = document.getElementById("chart").getContext("2d");
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: `Preço de ${coinName} (últimos 30 dias)`,
+              data: prices,
+              borderColor: "#00cec9",
+              backgroundColor: "rgba(0, 206, 201, 0.2)",
+              tension: 0.3,
+              fill: true
+            }]
+          }
+        });
+
+      } catch {
+        document.getElementById("price").textContent = "";
+        document.getElementById("error").textContent = "Erro ao carregar dados.";
+      }
+    }
+
+    window.onload = async () => {
+      await fetchAllCoins();
+      searchCrypto("bitcoin");
+    };
+  </script>
+
+</body>
+</html>
